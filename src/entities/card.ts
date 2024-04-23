@@ -58,14 +58,14 @@ export abstract class Card {
     // }
 
     const fields : any = Object.entries(card.fields);
-    // This is the case of a switch from a model to another one. It cannot be handeled
-    if (fields.length !== Object.entries(this.fields).length) {
-      return true;
-    }
-
     for (const field of fields) {
       const fieldName = field[0];
-      if (field[1].value !== this.fields[fieldName]) {
+      if (!this.fields[fieldName]) {
+        continue
+      }
+
+      if (field[1].value?.trim() !== this.fields[fieldName]?.trim()) {
+        console.log(`Card ${card.noteId} changed, field '${fieldName}': '${field[1].value?.trim()}' -> '${this.fields[fieldName]?.trim()}'`, card)
         return false;
       }
     }

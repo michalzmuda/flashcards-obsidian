@@ -85,7 +85,7 @@ export class CardsService {
         ? await this.anki.getCards(this.getAnkiIDs(ankiBlocks))
         : undefined;
 
-      const cards: Card[] = this.parser.generateFlashcards(
+      const cards: Card[] = await this.parser.generateFlashcards(
         this.file,
         deckName,
         vaultName,
@@ -119,16 +119,26 @@ export class CardsService {
       await this.insertCardsOnAnki(cardsToCreate, frontmatter, deckName);
 
       // Update decks if needed
-      const deckNeedToBeChanged = await this.deckNeedToBeChanged(
-        cardIds,
-        deckName
-      );
-      if (deckNeedToBeChanged) {
-        try {
-          this.anki.changeDeck(cardIds, deckName);
-          this.notifications.push("Cards moved in new deck");
-        } catch {
-          return ["Error: Could not update deck the file."];
+      let cardDecks = new Map()
+      cards.forEach(card => {
+        if (card.id) {
+            cardDecks.set(card.id, card.deckName)
+        }
+      })
+
+      for (const id of cardIds) {
+        if (!cardDecks.has(id)) {
+          continue
+        }
+        const deckNeedToBeChanged = await this.deckNeedToBeChanged([id], cardDecks.get(id))
+
+        if (deckNeedToBeChanged) {
+          try {
+            this.anki.changeDeck([id], cardDecks.get(id));
+            this.notifications.push("Moved " + id + ' card to \'' + cardDecks.get(id) + '\' deck.');
+          } catch {
+            this.notifications.push("Error: Could not update deck the file. id=" + id);
+          }
         }
       }
 
@@ -212,7 +222,7 @@ export class CardsService {
           card.reversed ? (total += 2) : total++;
         });
 
-        this.updateFrontmatter(frontmatter, deckName);
+        //this.updateFrontmatter(frontmatter, deckName);
         this.writeAnkiBlocks(cardsToCreate);
 
         this.notifications.push(
@@ -283,10 +293,17 @@ export class CardsService {
   private async updateCardsOnAnki(cards: Card[]): Promise<number> {
     if (cards.length) {
       try {
-        this.anki.updateCards(cards);
-        this.notifications.push(
-          `Updated successfully ${cards.length}/${cards.length} cards.`
-        );
+        this.anki.updateCards(cards);    
+        if (cards.length <= 3) {
+          this.notifications.push(
+            `Updated card(s): ${cards.map(c => c.id).join(',')}`
+          );
+        }
+        else {    
+          this.notifications.push(
+            `Updated ${cards.length} cards.`
+          );
+        }
       } catch (err) {
         console.error(err);
         Error("Error: Could not update cards on Anki");
@@ -300,33 +317,38 @@ export class CardsService {
     cards: number[],
     ankiBlocks: RegExpMatchArray[]
   ): Promise<number> {
+    console.log("deleteCards ignored")
+
+
     if (cards.length) {
       let deletedCards = 0;
       for (const block of ankiBlocks) {
         const id = Number(block[1]);
 
-        // Deletion of cards that need to be deleted (i.e. blocks ID that don't have content)
-        if (cards.includes(id)) {
-          try {
-            this.anki.deleteCards(cards);
-            deletedCards++;
+        console.log("card to delete: " + id);
 
-            this.updateFile = true;
-            this.file =
-              this.file.substring(0, block["index"]) +
-              this.file.substring(
-                block["index"] + block[0].length,
-                this.file.length
-              );
-            this.totalOffset -= block[0].length;
-            this.notifications.push(
-              `Deleted successfully ${deletedCards}/${cards.length} cards.`
-            );
-          } catch (err) {
-            console.error(err);
-            Error("Error, could not delete the card from Anki");
-          }
-        }
+        // Deletion of cards that need to be deleted (i.e. blocks ID that don't have content)
+//         if (cards.includes(id)) {
+//           try {
+//             this.anki.deleteCards(cards);
+//             deletedCards++;
+//
+//             this.updateFile = true;
+//             this.file =
+//               this.file.substring(0, block["index"]) +
+//               this.file.substring(
+//                 block["index"] + block[0].length,
+//                 this.file.length
+//               );
+//             this.totalOffset -= block[0].length;
+//             this.notifications.push(
+//               `Deleted successfully ${deletedCards}/${cards.length} cards.`
+//             );
+//           } catch (err) {
+//             console.error(err);
+//             Error("Error, could not delete the card from Anki");
+//           }
+//         }
       }
 
       return deletedCards;

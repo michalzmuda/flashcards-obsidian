@@ -55,17 +55,26 @@ export default class ObsidianFlashcard extends Plugin {
 	}
 
 	private getDefaultSettings(): ISettings {
-		return { contextAwareMode: true, sourceSupport: false, codeHighlightSupport: false, inlineID: false, contextSeparator: " > ", deck: "Default", folderBasedDeck: true, flashcardsTag: "card", inlineSeparator: "::", inlineSeparatorReverse: ":::", defaultAnkiTag: "obsidian", ankiConnectPermission: false }
+		return { contextAwareMode: true, sourceSupport: false, codeHighlightSupport: false, inlineID: false, contextSeparator: " > ", deck: "Default", folderBasedDeck: true, flashcardsTag: "card", inlineSeparator: "::", inlineSeparatorReverse: ":::", defaultAnkiTag: "obsidian", ankiConnectPermission: false,  anki_dir: null, obsidian_dir: null }
 	}
 
 	private generateCards(activeFile: TFile) {
-		this.cardsService.execute(activeFile).then(res => {
-			for (const r of res) {
-				new Notice(r, noticeTimeout)
-			}
-			console.log(res)
-		}).catch(err => {
-			Error(err)
-		})
+	    try {
+            this.cardsService.execute(activeFile)
+                .then(res => {
+                    for (const r of res) {
+                        new Notice(r, noticeTimeout)
+                    }
+                    console.log(res)
+                    new Notice("generateCards DONE", 3000)
+                })
+                .catch(err => {
+                    new Notice("generateCards error", 3000)
+                    Error(err)
+                })
+		}
+		catch(error) {
+		    new Notice("generateCards error: " + error, 3000)
+		}
 	}
 }

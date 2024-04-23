@@ -2,6 +2,8 @@ import { codeDeckExtension, sourceDeckExtension } from "src/conf/constants";
 import { Card } from "src/entities/card";
 
 export class Inlinecard extends Card {
+  options: Map<string, object>;
+
   constructor(
     id = -1,
     deckName: string,
@@ -13,7 +15,8 @@ export class Inlinecard extends Card {
     tags: string[] = [],
     inserted = false,
     mediaNames: string[],
-    containsCode: boolean
+    containsCode: boolean,
+    options = new Map()
   ) {
     super(
       id,
@@ -38,6 +41,7 @@ export class Inlinecard extends Card {
     if (containsCode) {
       this.modelName += codeDeckExtension;
     }
+    this.options = options;
   }
 
   public getCard(update = false): object {

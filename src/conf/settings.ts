@@ -11,4 +11,6 @@ export interface ISettings {
   inlineSeparatorReverse: string;
   defaultAnkiTag: string;
   ankiConnectPermission: boolean;
+  anki_dir: string;
+  obsidian_dir: string;
 }

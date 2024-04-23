@@ -7,7 +7,7 @@ import { Spacedcard } from "src/entities/spacedcard";
 import { Clozecard } from "src/entities/clozecard";
 import { escapeMarkdown } from "src/utils";
 import { Card } from "src/entities/card";
-import { htmlToMarkdown } from 'obsidian';
+import { htmlToMarkdown, Notice } from 'obsidian';
 
 export class Parser {
   private regex: Regex;
@@ -27,13 +27,14 @@ export class Parser {
     this.htmlConverter.setOption("simpleLineBreaks", true);
   }
 
-  public generateFlashcards(
+  public async generateFlashcards(
     file: string,
     deck: string,
     vault: string,
     note: string,
     globalTags: string[] = []
-  ): Flashcard[] {
+  ): Promise<Flashcard[]> {
+//   ) {
     const contextAware = this.settings.contextAwareMode;
     let cards: Flashcard[] = [];
     let headings: any = [];
@@ -48,7 +49,7 @@ export class Parser {
       this.generateCardsWithTag(file, headings, deck, vault, note, globalTags)
     );
     cards = cards.concat(
-      this.generateInlineCards(file, headings, deck, vault, note, globalTags)
+      await this.generateInlineCards(file, headings, deck, vault, note, globalTags)
     );
     cards = cards.concat(
       this.generateSpacedCards(file, headings, deck, vault, note, globalTags)
@@ -203,8 +204,8 @@ export class Parser {
     deck: string,
     vault: string,
     note: string,
-    globalTags: string[] = []
-  ) {
+    globalTags: string[] = []) {
+
     const contextAware = this.settings.contextAwareMode;
     const cards: Clozecard[] = [];
     const matches = [...file.matchAll(this.regex.cardsClozeWholeLine)];
@@ -227,6 +228,11 @@ export class Parser {
         : "";
 
       // If all the curly clozes are inside a math block, then do not create the card
+      const extra = match[2]
+            .replace(/==/g, '')
+            .replace(/<.+?>/g, '')
+            .replace(/\%\%.+?\%\%/g, '')
+            .replace(/\(.+?\)/g, '');
       const curlyClozes = match[2].matchAll(this.regex.singleClozeCurly);
       const matchIndex = match.index;
       // Identify curly clozes, drop all the ones that are in math blocks i.e. ($\frac{1}{12}$) and substitute the others with Anki syntax
@@ -263,12 +269,48 @@ export class Parser {
       medias = medias.concat(this.getAudioLinks(clozeText));
       clozeText = this.parseLine(clozeText, vault);
 
+      let finalDeck = deck
+
+      clozeText = clozeText.replace(/\%\%/g, '');
+      let clozeTextSplitted = clozeText.split('||');
+      clozeText = clozeTextSplitted[0].trim();
+
+      let hint = ''      
+      clozeTextSplitted.forEach((value, index) => {
+        if (index == 0) {
+          return
+        }
+        value = value.trim()
+        let valueSplitted = value.split(':')
+        
+        if (valueSplitted.length != 2) {
+          console.log('ERROR: ' + clozeText)
+          new Notice("Flashcard error: " + clozeText, 3000)
+          return
+        }
+      
+        let property = valueSplitted[0].toLocaleLowerCase().trim()
+        let propertyValue = valueSplitted[1].trim()
+      
+        if (/deck/ig.test(property) || /^d$/i.test(property)) {
+          finalDeck = propertyValue.replace(/<.+?>/g, '').trim();
+        }
+        else if (/hint/ig.test(property) || /^h$/i.test(property)) {
+          hint = propertyValue
+        }
+        else {
+          new Notice("Flashcard error: " + clozeText, 3000)
+          console.log('ERROR: ' + clozeText)
+          return
+        }
+      });
+
       const initialOffset = match.index;
       const endingLine = match.index + match[0].length;
       const tags: string[] = this.parseTags(match[4], globalTags);
       const id: number = match[5] ? Number(match[5]) : -1;
       const inserted: boolean = match[5] ? true : false;
-      const fields: any = { Text: clozeText, Extra: "" };
+      const fields: any = { Text: clozeText, Extra: extra, Hint: hint };
       if (this.settings.sourceSupport) {
         fields["Source"] = note;
       }
@@ -276,7 +318,7 @@ export class Parser {
 
       const card = new Clozecard(
         id,
-        deck,
+        finalDeck,
         originalLine,
         fields,
         reversed,
@@ -293,7 +335,7 @@ export class Parser {
     return cards;
   }
 
-  private generateInlineCards(
+  private async generateInlineCards(
     file: string,
     headings: any,
     deck: string,
@@ -308,7 +350,11 @@ export class Parser {
     for (const match of matches) {
       if (
         match[2].toLowerCase().startsWith("cards-deck") ||
-        match[2].toLowerCase().startsWith("tags")
+        match[2].toLowerCase().startsWith("tags") ||
+        // ignore breadcrumbs hierarchy tags
+        match[2].toLowerCase().trim() == "up" ||
+        match[2].toLowerCase().trim() == "down" ||
+        match[2].toLowerCase().trim() == "same"
       ) {
         continue;
       }
@@ -330,27 +376,200 @@ export class Parser {
           `${this.settings.contextSeparator}`
         )
         : match[2].trim();
-      let answer = match[4].trim();
+
+      let back = match[4].trim();
       let medias: string[] = this.getImageLinks(question);
-      medias = medias.concat(this.getImageLinks(answer));
-      medias = medias.concat(this.getAudioLinks(answer));
+      medias = medias.concat(this.getImageLinks(back));
+      medias = medias.concat(this.getAudioLinks(back));
+
+      let frontSound = null
+      let backSound = null
+
+      let hintImage = null;
+      let hintImageRegEx = new RegExp(/\[\[([^\[]+?)\|Hint\]\]/, "g").exec(back);
+      if (hintImageRegEx) {
+          this.upload_to_anki(hintImageRegEx[1]);
+          hintImage = `<img src="${hintImageRegEx[1]}">`;
+      }
+
+      let frontImage = null;
+      let frontImageRegEx = new RegExp(/\[\[([^\[]+?)\|🖼\]\]/, "g").exec(question);
+      if (frontImageRegEx) {
+          this.upload_to_anki(frontImageRegEx[1]);
+          frontImage = `<img src="${frontImageRegEx[1]}">`;
+      }
+
+      let backImage = null;
+      let backImageRegEx = new RegExp(/\[\[([^\[]+?)\|🖼\]\]/, "g").exec(back);
+      if (backImageRegEx) {
+          this.upload_to_anki(backImageRegEx[1]);
+          backImage = `<img src="${backImageRegEx[1]}">`;
+      }
+
       question = this.parseLine(question, vault);
-      answer = this.parseLine(answer, vault);
+      let front = question
+            .replace(/<.?p>/g, '')
+            .replace(/\&nbsp\;/g, ' ')
+            .replace(/\[.+$/g, '')
+            .replace(/<a.+$/g, '')
+            .trim();
+      let frontPronunciation = ''
+      if (question.includes('[')) {
+        frontPronunciation = question.replace(/<.+?>/g, '').replace(/^.+\[/g, '[').replace(/\].+$/g, ']').trim()
+      }
+
+      back = this.parseLine(back, vault)
+            .replace(/<.?p>/g, '')
+            .replace(/\&nbsp\;/g, ' ')
+            .trim()
+      let backSplitted = back.replace(/\%\%/g, '').split('||');
+
+      back = this.parseLine(back, vault);
+
+      let finalDeck = deck
+
+      back = backSplitted[0]
+            .replace(/\[.+$/g, '')
+            .replace(/<a.+$/g, '')
+            .trim();
+
+      // TODO: check
+      let backPronunciation = ''
+      if (backSplitted[0].includes('[')) {
+        backPronunciation = backSplitted[0].replace(/<.+?>/g, '').replace(/^.+\[/g, '[').replace(/\].+$/g, ']').trim()
+      }
+      
+      let hint = ''
+      let options = new Map()
+      backSplitted.forEach((value, index) => {
+        if (index == 0) {
+          return
+        }
+        value = value.trim()
+        let valueSplitted = value.split(':')
+        
+        if (valueSplitted.length != 2) {
+          console.log('ERROR: ' + back)
+          new Notice("Flashcard error: " + back, 3000)
+          return
+        }
+      
+        let property = valueSplitted[0].replace(/<.+?>/g, '').toLocaleLowerCase().trim()
+        let propertyValue = valueSplitted[1].replace(/<.+?>/g, '').trim()
+      
+        if (/deck/ig.test(property) || /^d$/i.test(property)) {
+          finalDeck = propertyValue;
+        }
+        else if (/hint/ig.test(property) || /^h$/i.test(property)) {
+          hint = propertyValue
+        }
+        else if (/options/ig.test(property) || /^o$/i.test(property)) {
+            let optionsSplitted = propertyValue.split(',')
+            optionsSplitted.forEach(option => {
+                let optionSplitted = option.trim().split('=')
+                if (optionSplitted.length == 1) {
+                    options.set(optionSplitted[0], true)
+                }
+                else if (optionSplitted.length == 2) {
+                    options.set(optionSplitted[0], optionSplitted[1])
+                }
+            })
+        }
+        else {
+          new Notice("Flashcard error: " + back, 3000)
+          console.log('ERROR: ' + back)
+          return
+        }
+      });
+
+        let cardLangMatch = new RegExp(/^(.+?)-(.+?)(-.+)?$/, "g").exec(finalDeck)
+        if (!cardLangMatch) {
+           continue;
+        }
+        let cardLang = cardLangMatch[1].toLowerCase();
+
+      if (finalDeck.match("-PL") ||
+            finalDeck.match("Sent") ||
+            !finalDeck.match("PL") ||
+            /Mati/.test(finalDeck)) {
+          const frontAudioResponse = await fetch('http://localhost:9179/audio/generate', {
+                method: 'POST',
+                body: JSON.stringify({
+                  lang: cardLang,
+                  text: front,
+                  anki_dir: this.settings.anki_dir,
+                  obsidian_dir: this.settings.obsidian_dir
+                }),
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                }})
+          console.log(frontAudioResponse);
+          if (frontAudioResponse.ok && frontAudioResponse.body !== null) {
+            const frontAudioResponseJSON = await frontAudioResponse.json()
+            frontSound = frontAudioResponseJSON["file_name"]
+          }
+      }
+
+      cardLang = cardLangMatch[2].toLowerCase();
+      if (/^PL-/.test(finalDeck) || /Mati/.test(finalDeck)) {
+          const backAudioResponse = await fetch('http://localhost:9179/audio/generate', {
+                method: 'POST',
+                body: JSON.stringify({
+                  lang: cardLang,
+                  text: back,
+                  anki_dir: this.settings.anki_dir,
+                  obsidian_dir: this.settings.obsidian_dir
+                }),
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                }})
+          console.log(backAudioResponse);
+          if (backAudioResponse.ok && backAudioResponse.body !== null) {
+            const backAudioResponseJSON = await backAudioResponse.json()
+            backSound = backAudioResponseJSON["file_name"]
+          }
+      }
 
       const initialOffset = match.index
       const endingLine = match.index + match[0].length;
       const tags: string[] = this.parseTags(match[5], globalTags);
       const id: number = match[6] ? Number(match[6]) : -1;
       const inserted: boolean = match[6] ? true : false;
-      const fields: any = { Front: question, Back: answer };
+      let fields: any = {
+            Front: front,
+            FrontPronunciation: frontPronunciation,
+            Back: back,
+            BackPronunciation: backPronunciation
+      };
       if (this.settings.sourceSupport) {
         fields["Source"] = note;
       }
-      const containsCode = this.containsCode([question, answer]);
+      if (frontSound) {
+        fields["FrontSound"] = `[sound:${frontSound}]`
+      }
+      if (backSound) {
+        fields["BackSound"] = `[sound:${backSound}]`
+      }
+      if (hint) {
+        fields["Hint"] = hint
+      }
+      if (hintImage) {
+        fields["HintImage"] = hintImage
+      }
+      if (frontImage) {
+        fields["FrontImage"] = frontImage
+      }
+      if (backImage) {
+        fields["BackImage"] = backImage
+      }
+
+      const containsCode = this.containsCode([question, back]);
 
       const card = new Inlinecard(
         id,
-        deck,
+        finalDeck,
         originalQuestion,
         fields,
         reversed,
@@ -359,12 +578,93 @@ export class Parser {
         tags,
         inserted,
         medias,
-        containsCode
-      );
+        containsCode,
+        options);
       cards.push(card);
     }
 
+    // TODO: my workflow specific
+
+
+    for(let i=0; i<cards.length; i++){
+        let card = cards[i]
+        card.fields["Back"] = card.fields["Back"].trim()
+        if (card.options.has("addSentences")) {
+          let sentences = ""
+          let sentencesList: Record<string, string>[] = []
+          cards.forEach(c => {
+            if(/sentences/ig.test(c.deckName)) {
+                let sentenceFront =
+                    c.fields["Front"]
+                        .replace(/<.?p(.+?)?>/g, '')
+                        .replace(/<.?a(.+?)?>/g, '')
+                        .trim()
+                let sentenceBack =
+                    c.fields["Back"]
+                        .replace(/<.?p(.+?)?>/g, '')
+                        .replace(/<.?a(.+?)?>/g, '')
+                        .trim()
+
+                sentencesList.push({
+                    front: sentenceFront,
+                    back: sentenceBack
+                });
+                sentences += sentenceFront + " - " + sentenceBack + "<br/>";
+            }
+          })
+          card.fields["Sentences"] = `<p>${sentences}</p>`
+
+            if (sentences != "" &&
+                sentencesList.length > 0) {
+
+                let langMatch = new RegExp(/^(.+?)-(.+?)(-.+)?$/, "g").exec(card.deckName)
+                if (!langMatch) {
+                   continue;
+                }
+                let lang = langMatch[2].toLowerCase();
+
+                const sentencesAudioResponse = await fetch('http://localhost:9179/audio/generate', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        lang: lang,
+                        text: card.fields["Front"],
+                        sentences: sentencesList,
+                        anki_dir: this.settings.anki_dir,
+                        obsidian_dir: this.settings.obsidian_dir
+                      }),
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                      }})
+                console.log(sentencesAudioResponse);
+                if (sentencesAudioResponse.ok && sentencesAudioResponse.body !== null) {
+                  const sentencesAudioResponseJSON = await sentencesAudioResponse.json()
+                  const sentencesFile = sentencesAudioResponseJSON["file_name"]
+                  card.fields["SentencesSound"] = `[sound:${sentencesFile}]`
+                }
+            }
+        }
+    }
+
     return cards;
+  }
+
+  private async upload_to_anki(file_name: string) {
+    const backAudioResponse = await fetch('http://localhost:9179/anki/upload', {
+          method: 'POST',
+          body: JSON.stringify({
+            file_name: file_name,
+            anki_dir: this.settings.anki_dir,
+            obsidian_dir: this.settings.obsidian_dir
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          }});
+    console.log(backAudioResponse);
+    if (!backAudioResponse.ok) {
+      console.error("upload_to_anki error: " + file_name);
+    }
   }
 
   private generateCardsWithTag(
@@ -399,26 +699,26 @@ export class Parser {
           `${this.settings.contextSeparator}`
         )
         : match[2].trim();
-      let answer = match[5].trim();
+      let back = match[5].trim();
       let medias: string[] = this.getImageLinks(question);
-      medias = medias.concat(this.getImageLinks(answer));
-      medias = medias.concat(this.getAudioLinks(answer));
+      medias = medias.concat(this.getImageLinks(back));
+      medias = medias.concat(this.getAudioLinks(back));
 
-      answer = this.getEmbedWrapContent(embedMap, answer);
+      back = this.getEmbedWrapContent(embedMap, back);
 
       question = this.parseLine(question, vault);
-      answer = this.parseLine(answer, vault);
+      back = this.parseLine(back, vault);
 
       const initialOffset = match.index
       const endingLine = match.index + match[0].length;
       const tags: string[] = this.parseTags(match[4], globalTags);
       const id: number = match[6] ? Number(match[6]) : -1;
       const inserted: boolean = match[6] ? true : false;
-      const fields: any = { Front: question, Back: answer };
+      const fields: any = { Front: question, Back: back };
       if (this.settings.sourceSupport) {
         fields["Source"] = note;
       }
-      const containsCode = this.containsCode([question, answer]);
+      const containsCode = this.containsCode([question, back]);
 
       const card = new Flashcard(
         id,
@@ -498,7 +798,7 @@ export class Parser {
     vaultName = encodeURIComponent(vaultName);
 
     return str.replace(linkRegex, (match, filename, rename) => {
-      const href = `obsidian://open?vault=${vaultName}&file=${encodeURIComponent(
+      const href = `obsidian://open?vault=${vaultName}&amp;file=${encodeURIComponent(
         filename
       )}.md`;
       const fileRename = rename ? rename : filename;
