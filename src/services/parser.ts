@@ -388,21 +388,21 @@ export class Parser {
       let hintImage = null;
       let hintImageRegEx = new RegExp(/\[\[([^\[]+?)\|Hint\]\]/, "g").exec(back);
       if (hintImageRegEx) {
-          this.upload_to_anki(hintImageRegEx[1]);
+          this.upload_to_anki(hintImageRegEx[1], this.settings);
           hintImage = `<img src="${hintImageRegEx[1]}">`;
       }
 
       let frontImage = null;
       let frontImageRegEx = new RegExp(/\[\[([^\[]+?)\|🖼\]\]/, "g").exec(question);
       if (frontImageRegEx) {
-          this.upload_to_anki(frontImageRegEx[1]);
+          this.upload_to_anki(frontImageRegEx[1], this.settings);
           frontImage = `<img src="${frontImageRegEx[1]}">`;
       }
 
       let backImage = null;
       let backImageRegEx = new RegExp(/\[\[([^\[]+?)\|🖼\]\]/, "g").exec(back);
       if (backImageRegEx) {
-          this.upload_to_anki(backImageRegEx[1]);
+          this.upload_to_anki(backImageRegEx[1], this.settings);
           backImage = `<img src="${backImageRegEx[1]}">`;
       }
 
@@ -609,7 +609,7 @@ export class Parser {
                     front: sentenceFront,
                     back: sentenceBack
                 });
-                sentences += sentenceFront + " - " + sentenceBack + "<br/>";
+                sentences += sentenceFront + " - " + sentenceBack + "<br/><br/>";
             }
           })
           card.fields["Sentences"] = `<p>${sentences}</p>`
@@ -627,7 +627,7 @@ export class Parser {
                       method: 'POST',
                       body: JSON.stringify({
                         lang: lang,
-                        text: card.fields["Front"],
+                        text: card.fields["Back"],
                         sentences: sentencesList,
                         anki_dir: this.settings.anki_dir,
                         obsidian_dir: this.settings.obsidian_dir
@@ -649,13 +649,13 @@ export class Parser {
     return cards;
   }
 
-  private async upload_to_anki(file_name: string) {
+  private async upload_to_anki(file_name: string, settings: ISettings) {
     const backAudioResponse = await fetch('http://localhost:9179/anki/upload', {
           method: 'POST',
           body: JSON.stringify({
             file_name: file_name,
-            anki_dir: this.settings.anki_dir,
-            obsidian_dir: this.settings.obsidian_dir
+            anki_dir: settings.anki_dir,
+            obsidian_dir: settings.obsidian_dir
           }),
           headers: {
             'Content-Type': 'application/json',

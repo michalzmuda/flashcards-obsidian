@@ -55,7 +55,21 @@ export default class ObsidianFlashcard extends Plugin {
 	}
 
 	private getDefaultSettings(): ISettings {
-		return { contextAwareMode: true, sourceSupport: false, codeHighlightSupport: false, inlineID: false, contextSeparator: " > ", deck: "Default", folderBasedDeck: true, flashcardsTag: "card", inlineSeparator: "::", inlineSeparatorReverse: ":::", defaultAnkiTag: "obsidian", ankiConnectPermission: false,  anki_dir: null, obsidian_dir: null }
+		return {
+            contextAwareMode: true,
+            sourceSupport: false,
+            codeHighlightSupport: false,
+            inlineID: false,
+            contextSeparator: " > ",
+            deck: "Default",
+            folderBasedDeck: true,
+            flashcardsTag: "card",
+            inlineSeparator: "::",
+            inlineSeparatorReverse: ":::",
+            defaultAnkiTag: "obsidian",
+            ankiConnectPermission: false,
+            anki_dir: "c:/Users/M/AppData/Roaming/Anki2/User 1/collection.media",
+            obsidian_dir: "D:/pkm/pkm-english" }
 	}
 
 	private generateCards(activeFile: TFile) {
