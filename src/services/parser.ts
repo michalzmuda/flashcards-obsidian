@@ -275,28 +275,34 @@ export class Parser {
       let clozeTextSplitted = clozeText.split('||');
       clozeText = clozeTextSplitted[0].trim();
 
-      let hint = ''      
+      let hint = ''
+      let bottom = false
       clozeTextSplitted.forEach((value, index) => {
         if (index == 0) {
           return
         }
         value = value.trim()
         let valueSplitted = value.split(':')
-        
-        if (valueSplitted.length != 2) {
-          console.log('ERROR: ' + clozeText)
-          new Notice("Flashcard error: " + clozeText, 3000)
+
+        let propertyValue = ""
+//         if (valueSplitted.length != 2) {
+//           console.log('ERROR: ' + clozeText)
+//           new Notice("Flashcard error: " + clozeText, 3000)
+//           return
+//         }
+        let property = valueSplitted[0].toLocaleLowerCase().trim()
+        if (valueSplitted.length == 2) {
+          propertyValue = valueSplitted[1].trim()
           return
         }
-      
-        let property = valueSplitted[0].toLocaleLowerCase().trim()
-        let propertyValue = valueSplitted[1].trim()
-      
         if (/deck/ig.test(property) || /^d$/i.test(property)) {
           finalDeck = propertyValue.replace(/<.+?>/g, '').trim();
         }
         else if (/hint/ig.test(property) || /^h$/i.test(property)) {
           hint = propertyValue
+        }
+        else if (/bottom/ig.test(property)) {
+          bottom = true
         }
         else {
           new Notice("Flashcard error: " + clozeText, 3000)
@@ -310,7 +316,7 @@ export class Parser {
       const tags: string[] = this.parseTags(match[4], globalTags);
       const id: number = match[5] ? Number(match[5]) : -1;
       const inserted: boolean = match[5] ? true : false;
-      const fields: any = { Text: clozeText, Extra: extra, Hint: hint };
+      const fields: any = { Text: clozeText, Extra: extra, Hint: hint, Bottom: bottom };
       if (this.settings.sourceSupport) {
         fields["Source"] = note;
       }
@@ -440,6 +446,7 @@ export class Parser {
       }
       
       let hint = ''
+      let bottom = false
       let options = new Map()
       backSplitted.forEach((value, index) => {
         if (index == 0) {
@@ -448,20 +455,26 @@ export class Parser {
         value = value.trim()
         let valueSplitted = value.split(':')
         
-        if (valueSplitted.length != 2) {
-          console.log('ERROR: ' + back)
-          new Notice("Flashcard error: " + back, 3000)
-          return
-        }
+//         if (valueSplitted.length != 2) {
+//           console.log('ERROR: ' + back)
+//           new Notice("Flashcard error: " + back, 3000)
+//           return
+//         }
       
         let property = valueSplitted[0].replace(/<.+?>/g, '').toLocaleLowerCase().trim()
-        let propertyValue = valueSplitted[1].replace(/<.+?>/g, '').trim()
-      
+        let propertyValue = ""
+        if (valueSplitted.length == 2) {
+          propertyValue = valueSplitted[1].replace(/<.+?>/g, '').trim()
+        }
+
         if (/deck/ig.test(property) || /^d$/i.test(property)) {
           finalDeck = propertyValue;
         }
         else if (/hint/ig.test(property) || /^h$/i.test(property)) {
           hint = propertyValue
+        }
+        else if (/bottom/ig.test(property)) {
+          bottom = true
         }
         else if (/options/ig.test(property) || /^o$/i.test(property)) {
             let optionsSplitted = propertyValue.split(',')
@@ -558,6 +571,9 @@ export class Parser {
       if (hintImage) {
         fields["HintImage"] = hintImage
       }
+      if (bottom) {
+        fields["Bottom"] = bottom
+      }
       if (frontImage) {
         fields["FrontImage"] = frontImage
       }
@@ -593,7 +609,27 @@ export class Parser {
           let sentences = ""
           let sentencesList: Record<string, string>[] = []
           cards.forEach(c => {
-            if(/sentences/ig.test(c.deckName)) {
+            if(/sentences/ig.test(c.deckName) && !c.fields["Bottom"]) {
+                let sentenceFront =
+                    c.fields["Front"]
+                        .replace(/<.?p(.+?)?>/g, '')
+                        .replace(/<.?a(.+?)?>/g, '')
+                        .trim()
+                let sentenceBack =
+                    c.fields["Back"]
+                        .replace(/<.?p(.+?)?>/g, '')
+                        .replace(/<.?a(.+?)?>/g, '')
+                        .trim()
+
+                sentencesList.push({
+                    front: sentenceFront,
+                    back: sentenceBack
+                });
+                sentences += sentenceFront + " - " + sentenceBack + "<br/><br/>";
+            }
+          })
+          cards.forEach(c => {
+            if(c.fields["Bottom"]) {
                 let sentenceFront =
                     c.fields["Front"]
                         .replace(/<.?p(.+?)?>/g, '')
@@ -613,7 +649,6 @@ export class Parser {
             }
           })
           card.fields["Sentences"] = `<p>${sentences}</p>`
-
             if (sentences != "" &&
                 sentencesList.length > 0) {
 
