@@ -293,7 +293,6 @@ export class Parser {
         let property = valueSplitted[0].toLocaleLowerCase().trim()
         if (valueSplitted.length == 2) {
           propertyValue = valueSplitted[1].trim()
-          return
         }
         if (/deck/ig.test(property) || /^d$/i.test(property)) {
           finalDeck = propertyValue.replace(/<.+?>/g, '').trim();
